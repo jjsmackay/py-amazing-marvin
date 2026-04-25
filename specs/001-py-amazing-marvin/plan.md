@@ -135,7 +135,7 @@ Implement all endpoints accessible with `X-API-Token`. Each method is a thin wra
 |---|---|---|---|
 | `test_credentials()` | POST | `/test` | No |
 | `get_today_items(*, tz_offset=None)` | GET | `/todayItems` | No |
-| `get_due_items(date, *, tz_offset=None)` | GET | `/dueItems` | No |
+| `get_due_items(*, by=None, tz_offset=None)` | GET | `/dueItems` | No |
 | `get_categories()` | GET | `/categories` | No |
 | `get_labels()` | GET | `/labels` | No |
 | `get_children(parent_id)` | GET | `/children` | Yes |
@@ -146,7 +146,7 @@ Implement all endpoints accessible with `X-API-Token`. Each method is a thin wra
 | `get_today_time_blocks()` | GET | `/todayTimeBlocks` | Yes |
 | `start_tracking(task_id)` | POST | `/track` | No |
 | `stop_tracking(task_id)` | POST | `/track` | No |
-| `get_time_tracks(*, task_ids=None, from_ts=None, to_ts=None)` | POST | `/tracks` | No |
+| `get_time_tracks(task_ids)` | POST | `/tracks` | No |
 | `get_tracked_item()` | GET | `/trackedItem` | No |
 | `get_kudos()` | GET | `/kudos` | No |
 | `get_me()` | GET | `/me` | No |
@@ -155,10 +155,10 @@ Implement all endpoints accessible with `X-API-Token`. Each method is a thin wra
 | `get_habit(habit_id)` | GET | `/habit` | Yes |
 | `update_habit(habit_id, action, **kwargs)` | POST | `/updateHabit` | Yes |
 | `claim_reward_points(points, *, task_id=None)` | POST | `/claimRewardPoints` | No |
-| `unclaim_reward_points(points)` | POST | `/unclaimRewardPoints` | No |
-| `spend_reward_points(reward_id, points)` | POST | `/spendRewardPoints` | No |
-| `set_reminder(task_id, time, **kwargs)` | POST | `/reminder/set` | No |
-| `delete_reminder(reminder_id)` | POST | `/reminder/delete` | No |
+| `unclaim_reward_points(*, item_id, date=None)` | POST | `/unclaimRewardPoints` | No |
+| `spend_reward_points(points, *, date=None)` | POST | `/spendRewardPoints` | No |
+| `set_reminders(reminders)` | POST | `/reminder/set` | No |
+| `delete_reminders(reminder_ids)` | POST | `/reminder/delete` | No |
 
 **File**: `src/amazing_marvin/client.py` (add methods), `tests/test_endpoints.py`
 

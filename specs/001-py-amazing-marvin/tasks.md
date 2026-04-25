@@ -116,7 +116,7 @@
 
 ### Tests for User Story 4
 
-- [ ] T025 [US4] Write `tests/test_endpoints.py` — one test per endpoint or endpoint group: test_credentials, get_today_items, get_due_items, get_categories, get_labels, get_children, add_task (with and without auto_complete), mark_done, add_project, add_event, get_today_time_blocks, start_tracking, stop_tracking, get_time_tracks, get_tracked_item, get_kudos, get_me, get_goals, get_habits, get_habit, update_habit (record/undo/rewrite), claim_reward_points, unclaim_reward_points, spend_reward_points, reset_reward_points (full token), get_reminders (full token), set_reminders, delete_reminders, delete_all_reminders (full token), get_doc, create_doc, update_doc, delete_doc, get_habits_raw (full token). Confirm correct paths, auth headers, and return types using `aioresponses`.
+- [ ] T025 [US4] Write `tests/test_endpoints.py` — one test per endpoint or endpoint group: test_credentials, get_today_items, get_due_items, get_categories, get_labels, get_children, add_task (with and without auto_complete), mark_done, add_project, add_event, get_today_time_blocks, start_tracking, stop_tracking, get_time_tracks, get_tracked_item, get_kudos, get_me, get_goals, get_habits, get_habit, update_habit (record/undo/rewrite), claim_reward_points, unclaim_reward_points, spend_reward_points, reset_reward_points (full token), get_reminders (full token), set_reminders, delete_reminders, delete_all_reminders (full token), get_doc, create_doc, update_doc, delete_doc, get_habits_raw (full token). Confirm correct paths, auth headers, and return types using `aioresponses`. Include a programmatic FR-019 assertion: iterate the experimental method set (`get_children`, `mark_done`, `add_event`, `get_today_time_blocks`, `get_habits`, `get_habits_raw`, `get_habit`, `update_habit`, `get_doc`, `create_doc`, `update_doc`, `delete_doc`) and assert `"Experimental" in method.__doc__` for each.
 
 ### Implementation for User Story 4
 
@@ -124,7 +124,7 @@
 - [ ] T027 [P] [US4] Add time tracking methods: `start_tracking(task_id)→TrackingResult`, `stop_tracking(task_id)→TrackingResult`, `get_time_tracks(task_ids)→list[TimeTrack]`, `get_tracked_item()→Task|None`. Auth=api_token. `start_tracking`/`stop_tracking` POST to `/track` with `{"taskId": task_id, "action": "START"/"STOP"}` (uppercase — see [research.md](research.md) §4 correction). `get_tracked_item` returns `None` if response is null-like.
 - [ ] T028 [P] [US4] Add goals and habits methods: `get_goals()→list[Goal]`, `get_habits()→list[Habit]` (experimental), `get_habit(habit_id)→Habit` (experimental), `get_habits_raw()→list[Habit]` (experimental, full token), `update_habit(habit_id, *, time=None, value=None, undo=False, history=None, update_db=True)→Any` (experimental). Auth=api_token except `get_habits_raw`.
 - [ ] T029 [P] [US4] Add rewards methods: `claim_reward_points(points, *, item_id=None, date=None)→AccountProfile`, `unclaim_reward_points(*, item_id, date=None)→AccountProfile`, `spend_reward_points(points, *, date=None)→AccountProfile`, `reset_reward_points()→AccountProfile` (full token). Body structure per [research.md](research.md) §4: `claim` sends `{points, itemId, date, op:"CLAIM"}`.
-- [ ] T030 [P] [US4] Add reminder methods: `get_reminders()→list[Reminder]` (full token), `set_reminders(reminders)→bool` — POSTs `{"reminders": [r.to_dict() for r in reminders]}` (need `Reminder.to_dict()` or inline dict construction), `delete_reminders(reminder_ids)→bool` — POSTs `{"reminderIds": reminder_ids}`, `delete_all_reminders()→bool` (full token). Note: `set_reminders` and `delete_reminders` need `Reminder` to be serialisable to dict — add `to_dict()` to `Reminder` dataclass in models.py.
+- [ ] T030 [US4] Add reminder methods: `get_reminders()→list[Reminder]` (full token), `set_reminders(reminders)→bool` — POSTs `{"reminders": [r.to_dict() for r in reminders]}`, `delete_reminders(reminder_ids)→bool` — POSTs `{"reminderIds": reminder_ids}`, `delete_all_reminders()→bool` (full token). Depends on T032 (`Reminder.to_dict()` must exist before `set_reminders` can serialise) — sequenced after T032, not parallel.
 - [ ] T031 [P] [US4] Add document access methods: `get_doc(doc_id)→MarvinDocument`, `create_doc(data)→MarvinDocument`, `update_doc(item_id, setters)→MarvinDocument`, `delete_doc(item_id)→bool`. All require full_access_token. `update_doc` POSTs `{"itemId": item_id, "setters": setters}` (see [research.md](research.md) §4 correction — NOT `_id`+`_rev`+fields). All experimental.
 - [ ] T032 [US4] Add `Reminder.to_dict()` method to `src/amazing_marvin/models.py` — serialises `Reminder` back to the API's camelCase JSON format for use in `set_reminders`. Covers the `reminderId`→`reminderId` mapping (no rename needed for Reminder fields that stay camelCase on the wire).
 
@@ -221,9 +221,9 @@ Task T026: add_event, get_today_time_blocks
 Task T027: time tracking methods
 Task T028: goals, habits methods
 Task T029: rewards methods
-Task T030: reminder methods
 Task T031: document methods
-(then T032 Reminder.to_dict, T025 test_endpoints.py)
+Task T032: Reminder.to_dict (must precede T030)
+(then T030 reminder methods, T025 test_endpoints.py)
 ```
 
 ---
@@ -257,7 +257,7 @@ Task T031: document methods
 - `[P]` tasks operate on different files — safe to parallelise.
 - Each `[USN]` label maps directly to a user story in [spec.md](spec.md).
 - Every phase ends with a **Checkpoint** — validate independently before proceeding.
-- `Reminder.to_dict()` (T032) is a blocker for T030; schedule accordingly.
+- `Reminder.to_dict()` (T032) is a blocker for T030 — T030 is therefore not marked `[P]`.
 - `aioresponses` is the recommended mock — compatible with `pytest-asyncio` and `aiohttp`.
 - The `_Throttler` uses `asyncio.sleep` internally; mock it in tests with `unittest.mock.patch("asyncio.sleep")` or `freezegun`.
 - Do not add network calls to tests under any circumstances — all HTTP must go through `aioresponses`.
