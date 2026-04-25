@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "py-amazing-marvin"
+name = "amazing-marvin"
 version = "0.1.0"
 description = "Async Python client for the Amazing Marvin API"
 readme = "README.md"

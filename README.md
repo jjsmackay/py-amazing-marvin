@@ -1,4 +1,4 @@
-# py-amazing-marvin
+# amazing-marvin
 
 [![Licence: MIT](https://img.shields.io/badge/Licence-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
@@ -11,7 +11,7 @@ Async-first, fully typed, no global state, no blocking I/O. Suitable for any Pyt
 ## Installation
 
 ```bash
-pip install py-amazing-marvin
+pip install amazing-marvin
 ```
 
 Requires Python 3.12+ and `aiohttp>=3.9`.
