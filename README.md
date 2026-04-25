@@ -4,7 +4,7 @@
 
 Async Python client library for the [Amazing Marvin](https://amazingmarvin.com) API.
 
-Built for use as a Home Assistant integration dependency: async-first, fully typed, no global state, no blocking I/O.
+Async-first, fully typed, no global state, no blocking I/O. Suitable for any Python application — CLIs, web services, MCP servers, Home Assistant integrations, sync bridges, scheduled scripts.
 
 ---
 
@@ -20,41 +20,45 @@ Requires Python 3.12+ and `aiohttp>=3.9`.
 
 ## Quick Start
 
-The example below shows the Home Assistant borrowed-session pattern — pass an existing `aiohttp.ClientSession` at construction so the client never owns or closes it.
-
 ```python
-import aiohttp
-from amazing_marvin import MarvinClient, MarvinAuthError, MarvinNotFoundError
+import asyncio
+from amazing_marvin import MarvinClient
 
-async def async_setup_entry(hass, entry):
-    session = async_get_clientsession(hass)
-    client = MarvinClient(
-        api_token=entry.data["api_token"],
-        full_access_token=entry.data.get("full_access_token"),
-        tz_offset=entry.data.get("tz_offset", 0),
-        throttle=True,
-        session=session,
-    )
-    # No context manager needed — session is borrowed
-    tasks = await client.get_today_items()
-    return tasks
+async def main():
+    async with MarvinClient(api_token="your_token") as client:
+        tasks = await client.get_today_items()
+        for task in tasks:
+            print(task.title, task.done)
 
-async def mark_subtask_done(client: MarvinClient, item_id: str) -> None:
-    try:
-        task = await client.mark_done(item_id)
-        assert task.done
-    except MarvinNotFoundError:
-        raise
-    except MarvinAuthError:
-        raise
+asyncio.run(main())
 ```
 
-When you own the session yourself (scripts, tests), use the async context manager:
+When embedding inside a host that already manages an `aiohttp.ClientSession` (FastAPI, Home Assistant, an MCP server runtime), pass the existing session at construction so the client never owns or closes it:
 
 ```python
-async with MarvinClient(api_token="your_token") as client:
-    tasks = await client.get_today_items()
+client = MarvinClient(
+    api_token=token,
+    full_access_token=full_token,   # optional
+    tz_offset=600,                  # AEST
+    throttle=True,
+    session=existing_session,       # borrowed; not closed by client
+)
+tasks = await client.get_today_items()
+task = await client.mark_done(item_id)
 ```
+
+---
+
+## Use Cases
+
+The library is intentionally framework-agnostic. Common embeddings:
+
+- **MCP servers** — wrap each `MarvinClient` method as a tool; the typed dataclasses serialise cleanly to JSON.
+- **Home Assistant integrations** — use the borrowed-session pattern with `async_get_clientsession(hass)`.
+- **CLIs** — pair with Typer or Click for terminal-driven task entry.
+- **FastAPI / web dashboards** — share the app's `aiohttp` session via lifespan.
+- **Sync bridges** — Notion, Todoist, Linear, calendar providers.
+- **Scheduled scripts** — cron, GitHub Actions, weekly reviews, exports.
 
 ---
 
@@ -84,7 +88,7 @@ Pass `throttle=True` to have the client enforce these limits automatically using
 
 ## Timezone Handling
 
-Marvin uses **integer minutes east of UTC** for timezone offsets (matching the JavaScript `Date.getTimezoneOffset()` sign convention inverted). For example:
+Marvin uses **integer minutes east of UTC** for timezone offsets. For example:
 
 - `tz_offset=600` — AEST (UTC+10)
 - `tz_offset=0` — UTC
