@@ -4,23 +4,45 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field, fields
-from typing import Any, Optional, TypeVar
+from functools import lru_cache
+from typing import Any, Callable, Optional, TypeVar
 
 _T = TypeVar("_T")
 
+_CAMEL_RE_1 = re.compile(r"([A-Z]+)([A-Z][a-z])")
+_CAMEL_RE_2 = re.compile(r"([a-z0-9])([A-Z])")
 
+
+@lru_cache(maxsize=512)
 def _camel_to_snake(name: str) -> str:
     if name.startswith("_"):
         return name
-    s = re.sub(r"([A-Z]+)([A-Z][a-z])", r"\1_\2", name)
-    s = re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", s)
+    s = _CAMEL_RE_1.sub(r"\1_\2", name)
+    s = _CAMEL_RE_2.sub(r"\1_\2", s)
     return s.lower()
 
 
-def _from_dict(cls: type[_T], data: dict[str, Any]) -> _T:
-    known = {f.name for f in fields(cls)}  # type: ignore[arg-type]
-    converted = {_camel_to_snake(k): v for k, v in data.items()}
-    return cls(**{k: v for k, v in converted.items() if k in known})
+@lru_cache(maxsize=None)
+def _field_names(cls: type) -> frozenset[str]:
+    return frozenset(f.name for f in fields(cls))
+
+
+def _from_dict(
+    cls: type[_T],
+    data: dict[str, Any],
+    converters: dict[str, Callable[[Any], Any]] | None = None,
+) -> _T:
+    known = _field_names(cls)  # type: ignore[arg-type]
+    converted: dict[str, Any] = {}
+    for k, v in data.items():
+        snake = _camel_to_snake(k)
+        if snake not in known:
+            continue
+        if converters and snake in converters:
+            converted[snake] = converters[snake](v)
+        else:
+            converted[snake] = v
+    return cls(**converted)
 
 
 @dataclass
@@ -102,17 +124,17 @@ class Task:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "Task":
-        known = {f.name for f in fields(cls)}
-        converted: dict[str, Any] = {}
-        for k, v in data.items():
-            snake = _camel_to_snake(k)
-            if snake not in known:
-                continue
-            if snake == "subtasks" and isinstance(v, dict):
-                converted[snake] = {sid: Subtask.from_dict(sub) for sid, sub in v.items()}
-            else:
-                converted[snake] = v
-        return cls(**converted)
+        return _from_dict(
+            cls,
+            data,
+            converters={
+                "subtasks": lambda v: (
+                    {sid: Subtask.from_dict(sub) for sid, sub in v.items()}
+                    if isinstance(v, dict)
+                    else v
+                ),
+            },
+        )
 
 
 @dataclass
@@ -349,17 +371,15 @@ class Goal:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "Goal":
-        known = {f.name for f in fields(cls)}
-        converted: dict[str, Any] = {}
-        for k, v in data.items():
-            snake = _camel_to_snake(k)
-            if snake not in known:
-                continue
-            if snake == "sections" and isinstance(v, list):
-                converted[snake] = [GoalSection.from_dict(s) for s in v]
-            else:
-                converted[snake] = v
-        return cls(**converted)
+        return _from_dict(
+            cls,
+            data,
+            converters={
+                "sections": lambda v: (
+                    [GoalSection.from_dict(s) for s in v] if isinstance(v, list) else v
+                ),
+            },
+        )
 
 
 @dataclass

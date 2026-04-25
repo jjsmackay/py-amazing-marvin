@@ -69,12 +69,3 @@ class MarvinRateLimitError(MarvinAPIError):
 
 class MarvinNotFoundError(MarvinAPIError):
     """Raised when the Marvin API returns 404."""
-
-    def __init__(
-        self,
-        message: str = "",
-        *,
-        status: int = 404,
-        cause: BaseException | None = None,
-    ) -> None:
-        super().__init__(message, status=status, cause=cause)

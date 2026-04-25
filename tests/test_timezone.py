@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 from aioresponses import aioresponses
@@ -37,7 +37,7 @@ async def test_get_today_items_utc_sends_today_date(mock_responses):
     fixed_utc = _make_utc_datetime(2026, 4, 25, 12, 0)
     mock_responses.get(f"{BASE}/todayItems", payload=[])
 
-    with patch("amazing_marvin.client.datetime") as mock_dt:
+    with patch("amazing_marvin._throttle.datetime") as mock_dt:
         mock_dt.now.return_value = fixed_utc
         mock_dt.side_effect = lambda *a, **kw: datetime(*a, **kw)
 
@@ -62,7 +62,7 @@ async def test_get_today_items_negative_offset_previous_day(mock_responses):
     fixed_utc = _make_utc_datetime(2026, 4, 25, 23, 30)
     mock_responses.get(f"{BASE}/todayItems", payload=[])
 
-    with patch("amazing_marvin.client.datetime") as mock_dt:
+    with patch("amazing_marvin._throttle.datetime") as mock_dt:
         mock_dt.now.return_value = fixed_utc
         mock_dt.side_effect = lambda *a, **kw: datetime(*a, **kw)
 
@@ -81,7 +81,7 @@ async def test_get_today_items_negative_offset_crosses_midnight(mock_responses):
     fixed_utc = _make_utc_datetime(2026, 4, 25, 2, 30)
     mock_responses.get(f"{BASE}/todayItems", payload=[])
 
-    with patch("amazing_marvin.client.datetime") as mock_dt:
+    with patch("amazing_marvin._throttle.datetime") as mock_dt:
         mock_dt.now.return_value = fixed_utc
         mock_dt.side_effect = lambda *a, **kw: datetime(*a, **kw)
 
@@ -121,7 +121,7 @@ async def test_get_today_items_positive_offset_next_day(mock_responses):
     fixed_utc = _make_utc_datetime(2026, 4, 25, 23, 0)
     mock_responses.get(f"{BASE}/todayItems", payload=[])
 
-    with patch("amazing_marvin.client.datetime") as mock_dt:
+    with patch("amazing_marvin._throttle.datetime") as mock_dt:
         mock_dt.now.return_value = fixed_utc
         mock_dt.side_effect = lambda *a, **kw: datetime(*a, **kw)
 
@@ -163,12 +163,14 @@ async def test_get_today_items_positive_offset_next_day(mock_responses):
         (840, 10, 1, "2026-04-26"),    # 10:01 + 840min = 00:01 = Apr 26
     ],
 )
-async def test_sc007_midnight_boundary_flip(mock_responses, tz_offset, utc_hour, utc_minute, expected_date):
+async def test_sc007_midnight_boundary_flip(
+    mock_responses, tz_offset, utc_hour, utc_minute, expected_date
+):
     """SC-007: At T-1s and T+1s of local midnight, 'today' flips correctly."""
     fixed_utc = _make_utc_datetime(2026, 4, 25, utc_hour, utc_minute)
     mock_responses.get(f"{BASE}/todayItems", payload=[])
 
-    with patch("amazing_marvin.client.datetime") as mock_dt:
+    with patch("amazing_marvin._throttle.datetime") as mock_dt:
         mock_dt.now.return_value = fixed_utc
         mock_dt.side_effect = lambda *a, **kw: datetime(*a, **kw)
 

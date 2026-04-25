@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from aioresponses import aioresponses
 
-from amazing_marvin._throttle import BURST_INTERVAL, DAILY_CAP, _Throttler, _local_date
+from amazing_marvin._throttle import BURST_INTERVAL, DAILY_CAP, _Throttler
 from amazing_marvin.client import MarvinClient
 from amazing_marvin.exceptions import MarvinRateLimitError
 
@@ -72,7 +72,7 @@ async def test_burst_first_call_free_when_no_prior_request():
 
 @pytest.mark.asyncio
 async def test_daily_cap_raises_after_1440():
-    """After 1440 acquire() calls, the 1441st raises MarvinRateLimitError(daily_cap_exceeded=True)."""
+    """After 1440 acquire() calls, the 1441st raises MarvinRateLimitError(daily_cap=True)."""
     throttler = _Throttler()
     # Patch monotonic to advance time so no burst sleeping interferes
     counter = [0]

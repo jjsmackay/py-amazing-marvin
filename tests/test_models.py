@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
-
 from amazing_marvin.models import (
     AccountProfile,
     CalendarEvent,

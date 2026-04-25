@@ -3,12 +3,11 @@
 from __future__ import annotations
 
 import json as _json
-from datetime import datetime, timedelta, timezone
 from typing import Any, Literal
 
 import aiohttp
 
-from amazing_marvin._throttle import _Throttler
+from amazing_marvin._throttle import _local_date, _Throttler
 from amazing_marvin.exceptions import (
     MarvinAPIError,
     MarvinAuthError,
@@ -32,6 +31,15 @@ from amazing_marvin.models import (
 )
 
 _BASE_URL = "https://serv.amazingmarvin.com/api"
+
+
+def _is_ok(result: Any) -> bool:
+    return result == "OK" or result is True
+
+
+def _build_body(**kwargs: Any) -> dict[str, Any]:
+    """Build a JSON body, dropping any keys whose value is None."""
+    return {k: v for k, v in kwargs.items() if v is not None}
 
 
 class MarvinClient:
@@ -74,10 +82,6 @@ class MarvinClient:
 
     def _active_tz(self, tz_override: int | None) -> int:
         return tz_override if tz_override is not None else self._tz_offset
-
-    def _today_date(self, tz_offset: int) -> str:
-        utc_now = datetime.now(timezone.utc).replace(tzinfo=None)
-        return (utc_now + timedelta(minutes=tz_offset)).date().isoformat()
 
     async def _request(
         self,
@@ -153,32 +157,19 @@ class MarvinClient:
                         daily_cap_exceeded=False,
                     )
                 if resp.status >= 500:
-                    try:
-                        cause: BaseException | None = aiohttp.ClientResponseError(
-                            resp.request_info,
-                            resp.history,
-                            status=resp.status,
-                        )
-                    except Exception:
-                        cause = None
                     raise MarvinAPIError(
                         f"Server error (HTTP {resp.status})",
                         status=resp.status,
-                        cause=cause,
                     )
-                # Parse JSON
-                content_type = resp.headers.get("Content-Type", "")
-                if "application/json" in content_type or resp.status == 200:
-                    try:
-                        return await resp.json(content_type=None)
-                    except (_json.JSONDecodeError, aiohttp.ContentTypeError):
-                        raw = await resp.read()
-                        raise MarvinAPIError(
-                            "Response is not valid JSON",
-                            status=resp.status,
-                            raw_body=raw,
-                        )
-                return await resp.json(content_type=None)
+                try:
+                    return await resp.json(content_type=None)
+                except (_json.JSONDecodeError, aiohttp.ContentTypeError):
+                    raw = await resp.read()
+                    raise MarvinAPIError(
+                        "Response is not valid JSON",
+                        status=resp.status,
+                        raw_body=raw,
+                    )
         except MarvinAPIError:
             raise
         except aiohttp.ClientError as exc:
@@ -199,7 +190,7 @@ class MarvinClient:
         Raises MarvinAuthError on 401/403.
         """
         result = await self._request("POST", "/test", auth="api")
-        return result == "OK" or result is True
+        return _is_ok(result)
 
     # ------------------------------------------------------------------ #
     # Tasks
@@ -213,7 +204,7 @@ class MarvinClient:
             tz_offset: Override client timezone for this call. Sent as X-Date header.
         """
         active_tz = self._active_tz(tz_offset)
-        today = self._today_date(active_tz)
+        today = _local_date(active_tz)
         data = await self._request(
             "GET", "/todayItems", auth="api", headers={"X-Date": today}
         )
@@ -230,7 +221,7 @@ class MarvinClient:
             tz_offset: Override client timezone for this call.
         """
         active_tz = self._active_tz(tz_offset)
-        by_date = by or self._today_date(active_tz)
+        by_date = by or _local_date(active_tz)
         data = await self._request("GET", "/dueItems", auth="api", params={"by": by_date})
         return [Task.from_dict(t) for t in (data or [])]
 
@@ -285,55 +276,34 @@ class MarvinClient:
             tz_offset: Override timezone for day-boundary scheduling.
         """
         active_tz = self._active_tz(tz_offset)
-        body: dict[str, Any] = {"title": title, "timeZoneOffset": active_tz}
-        if done:
-            body["done"] = done
-        if day is not None:
-            body["day"] = day
-        if parent_id is not None:
-            body["parentId"] = parent_id
-        if label_ids is not None:
-            body["labelIds"] = label_ids
-        if due_date is not None:
-            body["dueDate"] = due_date
-        if first_scheduled is not None:
-            body["firstScheduled"] = first_scheduled
-        if rank is not None:
-            body["rank"] = rank
-        if daily_section is not None:
-            body["dailySection"] = daily_section
-        if bonus_section is not None:
-            body["bonusSection"] = bonus_section
-        if custom_section is not None:
-            body["customSection"] = custom_section
-        if time_block_section is not None:
-            body["timeBlockSection"] = time_block_section
-        if note is not None:
-            body["note"] = note
-        if time_estimate is not None:
-            body["timeEstimate"] = time_estimate
-        if is_reward:
-            body["isReward"] = is_reward
-        if is_starred is not None:
-            body["isStarred"] = is_starred
-        if is_frogged is not None:
-            body["isFrogged"] = is_frogged
-        if planned_week is not None:
-            body["plannedWeek"] = planned_week
-        if planned_month is not None:
-            body["plannedMonth"] = planned_month
-        if reward_points is not None:
-            body["rewardPoints"] = reward_points
-        if reward_id is not None:
-            body["rewardId"] = reward_id
-        if backburner:
-            body["backburner"] = backburner
-        if review_date is not None:
-            body["reviewDate"] = review_date
-        if item_snooze_time is not None:
-            body["itemSnoozeTime"] = item_snooze_time
-        if perma_snooze_time is not None:
-            body["permaSnoozeTime"] = perma_snooze_time
+        body = _build_body(
+            title=title,
+            timeZoneOffset=active_tz,
+            done=done or None,
+            day=day,
+            parentId=parent_id,
+            labelIds=label_ids,
+            dueDate=due_date,
+            firstScheduled=first_scheduled,
+            rank=rank,
+            dailySection=daily_section,
+            bonusSection=bonus_section,
+            customSection=custom_section,
+            timeBlockSection=time_block_section,
+            note=note,
+            timeEstimate=time_estimate,
+            isReward=is_reward or None,
+            isStarred=is_starred,
+            isFrogged=is_frogged,
+            plannedWeek=planned_week,
+            plannedMonth=planned_month,
+            rewardPoints=reward_points,
+            rewardId=reward_id,
+            backburner=backburner or None,
+            reviewDate=review_date,
+            itemSnoozeTime=item_snooze_time,
+            permaSnoozeTime=perma_snooze_time,
+        )
         hdrs = {} if auto_complete else {"X-Auto-Complete": "false"}
         data = await self._request("POST", "/addTask", auth="api", json=body, headers=hdrs)
         return Task.from_dict(data)
@@ -403,55 +373,34 @@ class MarvinClient:
         Returns: Created Category with type="project", _id, and _rev.
         """
         active_tz = self._active_tz(tz_offset)
-        body: dict[str, Any] = {"title": title, "timeZoneOffset": active_tz}
-        if done:
-            body["done"] = done
-        if day is not None:
-            body["day"] = day
-        if parent_id is not None:
-            body["parentId"] = parent_id
-        if label_ids is not None:
-            body["labelIds"] = label_ids
-        if due_date is not None:
-            body["dueDate"] = due_date
-        if first_scheduled is not None:
-            body["firstScheduled"] = first_scheduled
-        if rank is not None:
-            body["rank"] = rank
-        if daily_section is not None:
-            body["dailySection"] = daily_section
-        if bonus_section is not None:
-            body["bonusSection"] = bonus_section
-        if custom_section is not None:
-            body["customSection"] = custom_section
-        if time_block_section is not None:
-            body["timeBlockSection"] = time_block_section
-        if note is not None:
-            body["note"] = note
-        if time_estimate is not None:
-            body["timeEstimate"] = time_estimate
-        if is_reward:
-            body["isReward"] = is_reward
-        if priority is not None:
-            body["priority"] = priority
-        if is_frogged is not None:
-            body["isFrogged"] = is_frogged
-        if planned_week is not None:
-            body["plannedWeek"] = planned_week
-        if planned_month is not None:
-            body["plannedMonth"] = planned_month
-        if reward_points is not None:
-            body["rewardPoints"] = reward_points
-        if reward_id is not None:
-            body["rewardId"] = reward_id
-        if backburner:
-            body["backburner"] = backburner
-        if review_date is not None:
-            body["reviewDate"] = review_date
-        if item_snooze_time is not None:
-            body["itemSnoozeTime"] = item_snooze_time
-        if perma_snooze_time is not None:
-            body["permaSnoozeTime"] = perma_snooze_time
+        body = _build_body(
+            title=title,
+            timeZoneOffset=active_tz,
+            done=done or None,
+            day=day,
+            parentId=parent_id,
+            labelIds=label_ids,
+            dueDate=due_date,
+            firstScheduled=first_scheduled,
+            rank=rank,
+            dailySection=daily_section,
+            bonusSection=bonus_section,
+            customSection=custom_section,
+            timeBlockSection=time_block_section,
+            note=note,
+            timeEstimate=time_estimate,
+            isReward=is_reward or None,
+            priority=priority,
+            isFrogged=is_frogged,
+            plannedWeek=planned_week,
+            plannedMonth=planned_month,
+            rewardPoints=reward_points,
+            rewardId=reward_id,
+            backburner=backburner or None,
+            reviewDate=review_date,
+            itemSnoozeTime=item_snooze_time,
+            permaSnoozeTime=perma_snooze_time,
+        )
         hdrs = {} if auto_complete else {"X-Auto-Complete": "false"}
         data = await self._request("POST", "/addProject", auth="api", json=body, headers=hdrs)
         return Category.from_dict(data)
@@ -497,11 +446,7 @@ class MarvinClient:
             start: ISO 8601 datetime string, e.g. "2024-01-15T09:00:00.000Z".
             length: Duration in milliseconds.
         """
-        body: dict[str, Any] = {"title": title, "start": start}
-        if note is not None:
-            body["note"] = note
-        if length is not None:
-            body["length"] = length
+        body = _build_body(title=title, start=start, note=note, length=length)
         data = await self._request("POST", "/addEvent", auth="api", json=body)
         return CalendarEvent.from_dict(data)
 
@@ -512,7 +457,7 @@ class MarvinClient:
         Experimental.
         """
         active_tz = self._active_tz(tz_offset)
-        today = self._today_date(active_tz)
+        today = _local_date(active_tz)
         data = await self._request(
             "GET", "/todayTimeBlocks", auth="api", headers={"X-Date": today}
         )
@@ -583,11 +528,7 @@ class MarvinClient:
             date: Date string "YYYY-MM-DD". Defaults to today in the active timezone.
         Returns: Updated AccountProfile.
         """
-        body: dict[str, Any] = {"points": points, "op": "CLAIM"}
-        if item_id is not None:
-            body["itemId"] = item_id
-        if date is not None:
-            body["date"] = date
+        body = _build_body(points=points, op="CLAIM", itemId=item_id, date=date)
         data = await self._request("POST", "/claimRewardPoints", auth="api", json=body)
         return AccountProfile.from_dict(data)
 
@@ -601,9 +542,7 @@ class MarvinClient:
 
         Auth: api_token required.
         """
-        body: dict[str, Any] = {"itemId": item_id, "op": "UNCLAIM"}
-        if date is not None:
-            body["date"] = date
+        body = _build_body(itemId=item_id, op="UNCLAIM", date=date)
         data = await self._request("POST", "/unclaimRewardPoints", auth="api", json=body)
         return AccountProfile.from_dict(data)
 
@@ -617,9 +556,7 @@ class MarvinClient:
 
         Auth: api_token required.
         """
-        body: dict[str, Any] = {"points": points, "op": "SPEND"}
-        if date is not None:
-            body["date"] = date
+        body = _build_body(points=points, op="SPEND", date=date)
         data = await self._request("POST", "/spendRewardPoints", auth="api", json=body)
         return AccountProfile.from_dict(data)
 
@@ -754,7 +691,7 @@ class MarvinClient:
         """
         body = {"reminders": [r.to_dict() for r in reminders]}
         result = await self._request("POST", "/reminder/set", auth="api", json=body)
-        return result == "OK" or result is True
+        return _is_ok(result)
 
     async def delete_reminders(self, reminder_ids: list[str]) -> bool:
         """POST /reminder/delete — delete one or more reminders.
@@ -764,7 +701,7 @@ class MarvinClient:
         """
         body = {"reminderIds": reminder_ids}
         result = await self._request("POST", "/reminder/delete", auth="api", json=body)
-        return result == "OK" or result is True
+        return _is_ok(result)
 
     async def delete_all_reminders(self) -> bool:
         """POST /reminder/deleteAll — delete all server-side reminders.
@@ -773,7 +710,7 @@ class MarvinClient:
         Returns: True on success.
         """
         result = await self._request("POST", "/reminder/deleteAll", auth="full")
-        return result == "OK" or result is True
+        return _is_ok(result)
 
     # ------------------------------------------------------------------ #
     # Document Access (raw CouchDB)
@@ -831,4 +768,4 @@ class MarvinClient:
         Returns: True on success.
         """
         result = await self._request("POST", "/doc/delete", auth="full", json={"itemId": item_id})
-        return result == "OK" or result is True
+        return _is_ok(result)

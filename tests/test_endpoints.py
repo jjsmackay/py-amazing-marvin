@@ -82,7 +82,7 @@ async def test_get_today_items(mock_responses):
 @pytest.mark.asyncio
 async def test_get_due_items(mock_responses):
     """GET /dueItems — returns list[Task]."""
-    from datetime import datetime, timezone, timedelta
+    from datetime import datetime, timedelta, timezone
     today = (datetime.now(timezone.utc) + timedelta(minutes=0)).date().isoformat()
     mock_responses.get(f"{BASE}/dueItems?by={today}", payload=[TASK_PAYLOAD])
     async with MarvinClient(api_token="tok") as client:

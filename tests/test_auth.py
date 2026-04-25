@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import pytest
-import aiohttp
 from aioresponses import aioresponses
 
 from amazing_marvin.client import MarvinClient
@@ -36,7 +35,7 @@ async def test_api_token_none_raises_before_http(mock_responses):
 
 @pytest.mark.asyncio
 async def test_full_access_token_none_raises_before_http(mock_responses):
-    """full_access_token=None on a full-access-required method raises MarvinAuthError before HTTP."""
+    """full_access_token=None on a full-access method raises MarvinAuthError before HTTP."""
     async with MarvinClient(api_token="tok") as client:
         with pytest.raises(MarvinAuthError) as exc_info:
             await client.reset_reward_points()

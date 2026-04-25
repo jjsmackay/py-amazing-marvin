@@ -15,8 +15,7 @@ DAILY_CAP = 1440
 def _local_date(tz_offset: int) -> str:
     """Return the local date as YYYY-MM-DD given tz_offset in minutes east of UTC."""
     utc_now = datetime.now(timezone.utc).replace(tzinfo=None)
-    local = utc_now + timedelta(minutes=tz_offset)
-    return local.date().isoformat()
+    return (utc_now + timedelta(minutes=tz_offset)).date().isoformat()
 
 
 class _Throttler:
@@ -39,8 +38,9 @@ class _Throttler:
                     "Daily request cap (1440) reached",
                     daily_cap_exceeded=True,
                 )
-            wait = max(0.0, self._last_request_at + BURST_INTERVAL - time.monotonic())
+            now = time.monotonic()
+            wait = max(0.0, self._last_request_at + BURST_INTERVAL - now)
             if wait > 0:
                 await asyncio.sleep(wait)
-            self._last_request_at = time.monotonic()
+            self._last_request_at = now + wait
             self._daily_count += 1

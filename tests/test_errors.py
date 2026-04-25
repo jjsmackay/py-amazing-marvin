@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import patch
 
 import aiohttp
 import pytest
@@ -66,7 +66,7 @@ async def test_404_raises_marvin_not_found_error(mock_responses):
 
 @pytest.mark.asyncio
 async def test_429_raises_rate_limit_error_with_retry_after(mock_responses):
-    """HTTP 429 with Retry-After: 5 -> MarvinRateLimitError(retry_after=5.0, daily_cap_exceeded=False)."""
+    """HTTP 429 with Retry-After:5 -> MarvinRateLimitError(retry_after=5.0)."""
     mock_responses.post(f"{BASE}/test", status=429, headers={"Retry-After": "5"})
     async with MarvinClient(api_token="tok") as client:
         with pytest.raises(MarvinRateLimitError) as exc_info:
@@ -78,15 +78,14 @@ async def test_429_raises_rate_limit_error_with_retry_after(mock_responses):
 
 
 @pytest.mark.asyncio
-async def test_500_raises_marvin_api_error_with_cause(mock_responses):
-    """HTTP 500 -> MarvinAPIError(status=500); cause is attached (not None)."""
+async def test_500_raises_marvin_api_error(mock_responses):
+    """HTTP 500 -> MarvinAPIError(status=500)."""
     mock_responses.post(f"{BASE}/test", status=500)
     async with MarvinClient(api_token="tok") as client:
         with pytest.raises(MarvinAPIError) as exc_info:
             await client.test_credentials()
     err = exc_info.value
     assert err.status == 500
-    assert err.cause is not None
 
 
 # ---------------------------------------------------------------------------
