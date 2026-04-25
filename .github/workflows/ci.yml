@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Test (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.12', '3.13']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+      - name: Install
+        run: |
+          uv venv .venv --python ${{ matrix.python-version }}
+          uv pip install -e ".[dev]"
+      - name: pytest + coverage
+        run: uv run --no-project pytest --cov=amazing_marvin --cov-report=term-missing
+      - name: mypy --strict
+        run: uv run --no-project mypy --strict src/amazing_marvin/
+      - name: ruff
+        run: uv run --no-project ruff check src/ tests/
+
+  build:
+    name: Build smoke test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+      - name: Build wheel + sdist
+        run: uv build
+      - name: Verify wheel installs cleanly
+        run: |
+          uv venv /tmp/verify --python 3.12
+          uv pip install --python /tmp/verify/bin/python dist/amazing_marvin-*.whl
+          /tmp/verify/bin/python -c "from amazing_marvin import MarvinClient; print('OK')"
