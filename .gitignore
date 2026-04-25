@@ -58,3 +58,7 @@ Thumbs.db
 .env
 .env.*
 !.env.example
+
+# Local-only Claude Code / speckit state
+.claude/settings.local.json
+.specify/
