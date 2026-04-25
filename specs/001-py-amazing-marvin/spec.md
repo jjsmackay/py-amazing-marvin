@@ -2,8 +2,17 @@
 
 **Feature Branch**: `001-py-amazing-marvin`
 **Created**: 2026-04-25
-**Status**: Draft
+**Status**: Clarified
 **Input**: User description: "Build py-amazing-marvin — a modern async Python client library for the Amazing Marvin API. Async-first, fully typed, two auth modes, typed exceptions, rate limit awareness, timezone-aware, full API coverage (including documented experimental endpoints). Primary use case: a Home Assistant integration dependency."
+
+## Clarifications
+
+### Session 2026-04-25
+
+- Q: Transient network error handling (timeouts, connection resets, 5xx) → A: No retries — wrap immediately in `MarvinAPIError` and raise; caller decides whether to retry.
+- Q: Recurring task subtask ID stability — should the library provide a lookup helper? → A: Thin wrapper only — caller resolves recurring task instances by filtering raw query results by name/date.
+- Q: Public API structure — flat class vs resource sub-clients? → A: Flat class — all methods directly on the client instance.
+- Q: Unknown fields in API responses → A: Silently ignore — discard unrecognised fields; never raise on schema additions.
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -95,6 +104,8 @@ A maintainer publishes the package to PyPI under the MIT licence. The package mu
 - **Invalid JSON from server**: an unexpected non-JSON or schema-violating response must raise the typed API error with the raw payload accessible for diagnostics.
 - **Daily budget reset**: the 1440/day counter must reset on the user's local day boundary as defined by `tz_offset`, not UTC.
 - **Method requires write token but only read token configured**: detected before any HTTP call, with a typed auth error naming the missing token type.
+- **Transient network error (timeout, connection reset, 5xx response)**: wrapped in `MarvinAPIError` immediately with no automatic retry; caller decides whether to retry.
+- **API response contains undocumented fields**: silently discarded; documented fields parse normally without error.
 
 ## Requirements *(mandatory)*
 
@@ -112,7 +123,7 @@ A maintainer publishes the package to PyPI under the MIT licence. The package mu
 
 - **FR-006**: Library MUST expose a typed exception hierarchy: `MarvinAuthError`, `MarvinRateLimitError`, `MarvinNotFoundError`, `MarvinAPIError`, with `MarvinAPIError` as the common base for all client-raised errors.
 - **FR-007**: `MarvinRateLimitError` MUST expose any server-supplied `Retry-After` value and an indicator of whether the daily cap or the burst limit was hit, when that information is available.
-- **FR-008**: Network or transport-layer failures MUST be wrapped in `MarvinAPIError` with the original cause attached; raw `aiohttp` exceptions MUST NOT cross the public boundary.
+- **FR-008**: Network or transport-layer failures — including timeouts, connection resets, and 5xx responses — MUST be wrapped in `MarvinAPIError` with the original cause attached and raised immediately with no automatic retry; raw `aiohttp` exceptions MUST NOT cross the public boundary.
 
 **Rate limiting**
 
@@ -130,10 +141,10 @@ A maintainer publishes the package to PyPI under the MIT licence. The package mu
 **Typing & API surface**
 
 - **FR-016**: All public methods, parameters, and return values MUST be type-annotated. The package MUST ship a `py.typed` marker so downstream type checkers (mypy, pyright) consume the annotations.
-- **FR-017**: All response payloads MUST be parsed into typed dataclasses (or equivalent typed models) defined in a dedicated models module. Raw `dict[str, Any]` MUST NOT cross the public API.
+- **FR-017**: All response payloads MUST be parsed into typed dataclasses (or equivalent typed models) defined in a dedicated models module. Raw `dict[str, Any]` MUST NOT cross the public API. Models MUST silently discard fields not present in the documented schema; unrecognised fields MUST NOT raise errors, ensuring forward compatibility with future Marvin API additions.
 - **FR-018**: Library MUST expose an async method for every endpoint documented in the upstream Amazing Marvin API wiki that is reachable with either auth mode.
 - **FR-019**: Methods backing endpoints flagged experimental in the upstream docs MUST be implemented and MUST state the experimental/stability status in their docstrings.
-- **FR-020**: Code MUST be structured with clean separation: HTTP/transport in a client module, typed payload models in a models module, and exceptions in an exceptions module.
+- **FR-020**: Code MUST be structured with clean separation: HTTP/transport in a client module, typed payload models in a models module, and exceptions in an exceptions module. The client class MUST be a single flat class exposing all endpoint methods directly on the instance; resource sub-clients are not used.
 
 **Testing & packaging**
 
@@ -143,7 +154,7 @@ A maintainer publishes the package to PyPI under the MIT licence. The package mu
 
 ### Key Entities
 
-- **Client**: Holds credentials (one or both tokens), `tz_offset`, optional rate-limiter state, and either an owned or borrowed HTTP session. Exposes one async method per documented Marvin endpoint.
+- **Client**: Holds credentials (one or both tokens), `tz_offset`, optional rate-limiter state, and either an owned or borrowed HTTP session. Exposes one async method per documented Marvin endpoint as a flat class — all methods on the instance directly, no resource sub-clients.
 - **Token type**: Enumerated as read-only API token vs full-access token; methods are tagged with the type they need so misuse is caught client-side.
 - **Task**: Marvin's primary work unit. Carries `_id`, `title`, `done`, `parentId`, `day`, `db`, plus the rest of the documented fields. Supports parent-child (subtask) relationships.
 - **Project / Category / Label**: Marvin's organisational hierarchy referenced by tasks.
@@ -177,3 +188,4 @@ A maintainer publishes the package to PyPI under the MIT licence. The package mu
 - The library is published under the MIT licence with copyright attributed to the maintainer of this repository.
 - "Documented experimental endpoints" means endpoints the upstream wiki explicitly marks experimental or beta; undocumented endpoints discovered by reverse engineering are out of scope.
 - Consumers that want logging or metrics will plug them in via standard Python logging; the library does not ship its own observability stack.
+- Recurring task ID stability and subtask lookup by name/date is the caller's responsibility. The library provides raw task queries via the documented API; the HA integration filters results by name and date as needed to resolve today's recurring task instance.
