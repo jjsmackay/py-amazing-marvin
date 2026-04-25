@@ -504,7 +504,7 @@ class MarvinClient:
         Returns None if no task is currently being tracked.
         """
         data = await self._request("GET", "/trackedItem", auth="api")
-        if not data:
+        if data is None:
             return None
         return Task.from_dict(data)
 
