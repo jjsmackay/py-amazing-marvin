@@ -32,7 +32,6 @@ ruff check src/ tests/
 
 - `src/amazing_marvin/` — library code (`client.py`, `models.py`, `exceptions.py`, `_throttle.py`).
 - `tests/` — `pytest-asyncio` test suite with mocked HTTP.
-- `specs/` — Spec Kit feature specifications (history; not runtime).
 
 ## Gotchas
 
@@ -43,15 +42,3 @@ ruff check src/ tests/
 - **`_from_dict` silently discards unknown keys** for forward compatibility with new Marvin API fields.
 - **`_build_body(**kw)` filters None values only.** To omit a boolean when False (e.g. `done=False` shouldn't go in the body), pass `done=done or None`.
 - **No automatic retries** — every transient error (5xx, network) raises immediately. Callers handle retry policy.
-
-<!-- SPECKIT START -->
-## Active Feature
-
-**Branch**: `001-py-amazing-marvin`
-**Plan**: [specs/001-py-amazing-marvin/plan.md](specs/001-py-amazing-marvin/plan.md)
-**Spec**: [specs/001-py-amazing-marvin/spec.md](specs/001-py-amazing-marvin/spec.md)
-**Research**: [specs/001-py-amazing-marvin/research.md](specs/001-py-amazing-marvin/research.md)
-**Data model**: [specs/001-py-amazing-marvin/data-model.md](specs/001-py-amazing-marvin/data-model.md)
-**Contracts**: [specs/001-py-amazing-marvin/contracts/](specs/001-py-amazing-marvin/contracts/)
-**Quickstart**: [specs/001-py-amazing-marvin/quickstart.md](specs/001-py-amazing-marvin/quickstart.md)
-<!-- SPECKIT END -->
