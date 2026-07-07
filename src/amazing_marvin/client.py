@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json as _json
+from base64 import b64encode
 from typing import Any, Literal
 
 import aiohttp
@@ -92,11 +93,11 @@ class MarvinClient:
             )
         self._couch_url = couch_url.rstrip("/") if couch_url else None
         self._couch_db = couch_db
-        self._couch_auth = (
-            aiohttp.BasicAuth(couch_user, couch_password)
-            if couch_user is not None and couch_password is not None
-            else None
-        )
+        # Pre-encoded basic-auth header (aiohttp.BasicAuth is deprecated).
+        self._couch_auth_header: dict[str, str] = {}
+        if couch_user is not None and couch_password is not None:
+            credentials = b64encode(f"{couch_user}:{couch_password}".encode()).decode()
+            self._couch_auth_header = {"Authorization": f"Basic {credentials}"}
 
     async def __aenter__(self) -> "MarvinClient":
         if self._owns_session:
@@ -829,7 +830,7 @@ class MarvinClient:
         url = f"{self._couch_url}{path}"
         try:
             async with self._session.request(
-                method, url, json=json, auth=self._couch_auth
+                method, url, json=json, headers=self._couch_auth_header or None
             ) as resp:
                 if resp.status >= 400:
                     raise MarvinCouchError(
