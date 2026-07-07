@@ -69,3 +69,11 @@ class MarvinRateLimitError(MarvinAPIError):
 
 class MarvinNotFoundError(MarvinAPIError):
     """Raised when the Marvin API returns 404."""
+
+
+class MarvinCouchError(MarvinAPIError):
+    """Raised for CouchDB problems: couch not configured, or a query failed.
+
+    Configuration errors are raised before any HTTP call (``status`` is None);
+    query failures carry the CouchDB HTTP status.
+    """
