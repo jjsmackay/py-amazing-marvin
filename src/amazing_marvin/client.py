@@ -3,14 +3,22 @@
 from __future__ import annotations
 
 import json as _json
+from base64 import b64encode
 from typing import Any, Literal
 
 import aiohttp
 
+from amazing_marvin._couch import (
+    COUCH_INDEXES,
+    DayLike,
+    build_task_selector,
+    day_str,
+)
 from amazing_marvin._throttle import _local_date, _Throttler
 from amazing_marvin.exceptions import (
     MarvinAPIError,
     MarvinAuthError,
+    MarvinCouchError,
     MarvinNotFoundError,
     MarvinRateLimitError,
 )
@@ -52,6 +60,12 @@ class MarvinClient:
         throttle: When True, enforce 1-req/3-s burst and 1440/day limits automatically.
         session: Externally owned aiohttp.ClientSession. If None, a session is created
                  on __aenter__ and closed on __aexit__.
+        couch_url: Base URL of a CouchDB replica of Marvin's database. Optional —
+                   like full_access_token, only the couch query methods need it.
+        couch_db: Database name on that CouchDB (e.g. "marvin").
+        couch_user: HTTP basic-auth user for CouchDB. Optional, but must be
+                    given together with couch_password.
+        couch_password: HTTP basic-auth password for CouchDB.
     """
 
     def __init__(
@@ -62,6 +76,10 @@ class MarvinClient:
         tz_offset: int = 0,
         throttle: bool = False,
         session: aiohttp.ClientSession | None = None,
+        couch_url: str | None = None,
+        couch_db: str | None = None,
+        couch_user: str | None = None,
+        couch_password: str | None = None,
     ) -> None:
         self._api_token = api_token
         self._full_access_token = full_access_token
@@ -69,6 +87,17 @@ class MarvinClient:
         self._throttler: _Throttler | None = _Throttler() if throttle else None
         self._session = session
         self._owns_session = session is None
+        if (couch_user is None) != (couch_password is None):
+            raise MarvinCouchError(
+                "couch_user and couch_password must be provided together."
+            )
+        self._couch_url = couch_url.rstrip("/") if couch_url else None
+        self._couch_db = couch_db
+        # Pre-encoded basic-auth header (aiohttp.BasicAuth is deprecated).
+        self._couch_auth_header: dict[str, str] = {}
+        if couch_user is not None and couch_password is not None:
+            credentials = b64encode(f"{couch_user}:{couch_password}".encode()).decode()
+            self._couch_auth_header = {"Authorization": f"Basic {credentials}"}
 
     async def __aenter__(self) -> "MarvinClient":
         if self._owns_session:
@@ -769,3 +798,162 @@ class MarvinClient:
         """
         result = await self._request("POST", "/doc/delete", auth="full", json={"itemId": item_id})
         return _is_ok(result)
+
+    # ------------------------------------------------------------------ #
+    # CouchDB replica queries (read-only)
+    # ------------------------------------------------------------------ #
+    #
+    # Reads against a local CouchDB replica of Marvin's database — fast and
+    # free of Marvin API rate limits, but eventually consistent (replication
+    # lag of seconds). Never use these to seed a write; fetch authoritative
+    # state via get_doc instead.
+
+    async def _couch_request(
+        self,
+        method: str,
+        path: str,
+        *,
+        json: dict[str, Any] | None = None,
+    ) -> Any:
+        """Send a request to the configured CouchDB. Bypasses the Marvin API
+        throttle and token headers entirely — couch is local and uses basic auth."""
+        if self._couch_url is None or self._couch_db is None:
+            raise MarvinCouchError(
+                "CouchDB is not configured. Pass couch_url= and couch_db= "
+                "(and couch_user=/couch_password=) when constructing MarvinClient."
+            )
+        if self._session is None:
+            raise MarvinAPIError(
+                "Client has no session. Use 'async with MarvinClient(...) as client:' "
+                "or pass session= at construction."
+            )
+        url = f"{self._couch_url}{path}"
+        try:
+            async with self._session.request(
+                method, url, json=json, headers=self._couch_auth_header or None
+            ) as resp:
+                if resp.status >= 400:
+                    if resp.status in (401, 403):
+                        detail = (
+                            "CouchDB rejected the credentials "
+                            "(check couch_user/couch_password)"
+                        )
+                    elif resp.status == 404:
+                        detail = (
+                            f"CouchDB database or resource not found "
+                            f"(check couch_db, path {path})"
+                        )
+                    else:
+                        detail = "CouchDB request failed"
+                    raise MarvinCouchError(
+                        f"{detail} (HTTP {resp.status})",
+                        status=resp.status,
+                    )
+                return await resp.json(content_type=None)
+        except MarvinAPIError:
+            raise
+        except Exception as exc:
+            raise MarvinCouchError(f"CouchDB request failed: {exc}", cause=exc) from exc
+
+    async def couch_find(
+        self,
+        selector: dict[str, Any],
+        *,
+        fields: list[str] | None = None,
+        limit: int | None = None,
+        skip: int | None = None,
+        sort: list[dict[str, str]] | None = None,
+        bookmark: str | None = None,
+    ) -> dict[str, Any]:
+        """POST /{db}/_find — raw Mango query against the replica.
+
+        Returns the CouchDB response dict: ``docs`` plus a ``bookmark`` for
+        pagination. Prefer the typed helpers (find_tasks, tasks_by_day, ...)
+        unless you need a custom selector.
+        """
+        body = _build_body(
+            selector=selector, fields=fields, limit=limit, skip=skip,
+            sort=sort, bookmark=bookmark,
+        )
+        result = await self._couch_request("POST", f"/{self._couch_db}/_find", json=body)
+        return dict(result)
+
+    async def couch_all_docs(
+        self, *, include_docs: bool = False, limit: int | None = None
+    ) -> dict[str, Any]:
+        """GET-equivalent of /{db}/_all_docs (via POST body). Rarely needed."""
+        body = _build_body(include_docs=include_docs, limit=limit)
+        result = await self._couch_request(
+            "POST", f"/{self._couch_db}/_all_docs", json=body
+        )
+        return dict(result)
+
+    async def ensure_couch_indexes(self) -> dict[str, str]:
+        """Create the Mango indexes the query helpers rely on (idempotent).
+
+        Returns a mapping of index name to CouchDB's result: "created" or
+        "exists" — both are success.
+        """
+        results: dict[str, str] = {}
+        for name, index_fields in COUCH_INDEXES.items():
+            result = await self._couch_request(
+                "POST",
+                f"/{self._couch_db}/_index",
+                json={"index": {"fields": index_fields}, "name": name, "type": "json"},
+            )
+            results[name] = str(result.get("result", ""))
+        return results
+
+    async def find_tasks(
+        self,
+        *,
+        title_contains: str | None = None,
+        done: bool | None = None,
+        day: DayLike | None = None,
+        day_range: tuple[DayLike, DayLike] | None = None,
+        due_by: DayLike | None = None,
+        parent_id: str | None = None,
+        label_id: str | None = None,
+        limit: int = 25,
+    ) -> list[Task]:
+        """Search Task documents in the couch replica; filters AND together.
+
+        Always constrains ``db == "Tasks"``, so recurring-task generator
+        documents never appear — results are actionable instances only.
+        """
+        selector = build_task_selector(
+            title_contains=title_contains, done=done, day=day, day_range=day_range,
+            due_by=due_by, parent_id=parent_id, label_id=label_id,
+        )
+        result = await self.couch_find(selector, limit=limit)
+        return [Task.from_dict(doc) for doc in result["docs"]]
+
+    async def tasks_by_day(self, day: DayLike, *, limit: int = 100) -> list[Task]:
+        """Tasks scheduled on the given day (couch replica)."""
+        result = await self.couch_find(
+            {"db": "Tasks", "day": day_str(day)}, limit=limit
+        )
+        return [Task.from_dict(doc) for doc in result["docs"]]
+
+    async def tasks_due_by(self, due_by: DayLike, *, limit: int = 100) -> list[Task]:
+        """Unfinished tasks with a due date on or before the given day (couch replica)."""
+        selector = build_task_selector(done=False, due_by=due_by)
+        result = await self.couch_find(selector, limit=limit)
+        return [Task.from_dict(doc) for doc in result["docs"]]
+
+    async def planner_items(self, day: DayLike, *, limit: int = 50) -> list[TimeBlock]:
+        """Time blocks (PlannerItems) for the given day (couch replica)."""
+        result = await self.couch_find(
+            {"db": "PlannerItems", "date": day_str(day)}, limit=limit
+        )
+        return [TimeBlock.from_dict(doc) for doc in result["docs"]]
+
+    async def recurring_generators(self, *, limit: int = 500) -> list[dict[str, Any]]:
+        """All recurring-task generator documents, as raw dicts (couch replica)."""
+        result = await self.couch_find({"db": "RecurringTasks"}, limit=limit)
+        return [dict(doc) for doc in result["docs"]]
+
+    async def categories_from_couch(self, *, limit: int = 500) -> list[Category]:
+        """All Category documents (projects and categories) from the couch replica."""
+        result = await self.couch_find({"db": "Categories"}, limit=limit)
+        return [Category.from_dict(doc) for doc in result["docs"]]

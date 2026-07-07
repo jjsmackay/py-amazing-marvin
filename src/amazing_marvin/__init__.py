@@ -4,6 +4,7 @@ from amazing_marvin.client import MarvinClient
 from amazing_marvin.exceptions import (
     MarvinAPIError,
     MarvinAuthError,
+    MarvinCouchError,
     MarvinNotFoundError,
     MarvinRateLimitError,
 )
@@ -31,6 +32,7 @@ __all__ = [
     "MarvinAuthError",
     "MarvinRateLimitError",
     "MarvinNotFoundError",
+    "MarvinCouchError",
     "Task",
     "Subtask",
     "Category",

@@ -75,6 +75,42 @@ Methods that need a token you have not supplied will raise `MarvinAuthError` bef
 
 ---
 
+## CouchDB Queries (optional)
+
+If you run a local CouchDB replica of Marvin's database (Marvin's `/pre?api`
+page exposes your account's Cloudant credentials for pull replication), the
+client can query it directly — fast, searchable reads with no Marvin API rate
+limits:
+
+```python
+async with MarvinClient(
+    couch_url="http://couchdb:5984",
+    couch_db="marvin",
+    couch_user="marvin_sync",
+    couch_password="...",
+) as client:
+    await client.ensure_couch_indexes()          # idempotent, run once
+    tasks = await client.find_tasks(title_contains="invoice", done=False)
+    today = await client.tasks_by_day("2026-07-07")
+    overdue = await client.tasks_due_by("2026-07-07")
+```
+
+Helpers: `find_tasks`, `tasks_by_day`, `tasks_due_by`, `planner_items`,
+`recurring_generators`, `categories_from_couch`, plus raw `couch_find` for
+custom Mango selectors. Couch methods raise `MarvinCouchError` before any HTTP
+call when couch is unconfigured — HTTP-only users are unaffected.
+
+`find_tasks(title_contains=...)` is a substring **scan**, not an indexed
+lookup: CouchDB narrows on `db` via the index, then regex-filters the
+remaining Task documents. It's bounded by `limit` (default 25) and fine for
+interactive search, but don't rely on it for large unbounded queries.
+
+**The replica is eventually consistent** (replication lag of seconds). Treat
+it as read-only display state; never seed a write from it — fetch
+authoritative state with `get_doc` instead.
+
+---
+
 ## Rate Limits
 
 The Amazing Marvin API enforces:
