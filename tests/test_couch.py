@@ -112,9 +112,16 @@ async def test_couch_find_omits_unset_options(couch_client, mock_aioresponses):
 
 async def test_couch_error_maps_to_exception(couch_client, mock_aioresponses):
     mock_aioresponses.post(FIND_URL, status=401, payload={"error": "unauthorized"})
-    with pytest.raises(MarvinCouchError) as excinfo:
+    with pytest.raises(MarvinCouchError, match="credentials") as excinfo:
         await couch_client.couch_find({"db": "Tasks"})
     assert excinfo.value.status == 401
+
+
+async def test_couch_404_error_message_names_db(couch_client, mock_aioresponses):
+    mock_aioresponses.post(FIND_URL, status=404, payload={"error": "not_found"})
+    with pytest.raises(MarvinCouchError, match="not found") as excinfo:
+        await couch_client.couch_find({"db": "Tasks"})
+    assert excinfo.value.status == 404
 
 
 async def test_couch_network_error_maps_to_exception(couch_client, mock_aioresponses):
@@ -171,6 +178,11 @@ async def test_find_tasks_day_range(couch_client, mock_aioresponses):
     )
     selector = _find_payload(mock_aioresponses)["selector"]
     assert selector["day"] == {"$gte": "2026-07-01", "$lte": "2026-07-31"}
+
+
+async def test_find_tasks_day_and_day_range_conflict_raises(couch_client):
+    with pytest.raises(ValueError, match="day or day_range"):
+        await couch_client.find_tasks(day="2026-07-07", day_range=("2026-07-01", "2026-07-31"))
 
 
 async def test_find_tasks_due_by_excludes_null_due(couch_client, mock_aioresponses):

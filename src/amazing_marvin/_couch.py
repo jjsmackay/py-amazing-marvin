@@ -59,7 +59,12 @@ def build_task_selector(
 
     Always constrains ``db == "Tasks"`` so RecurringTasks generator documents
     never match — results are actionable task instances only.
+
+    Raises ``ValueError`` if both ``day`` and ``day_range`` are given — they
+    both constrain the ``day`` field, so passing both is a caller mistake.
     """
+    if day is not None and day_range is not None:
+        raise ValueError("Pass either day or day_range, not both.")
     selector: dict[str, Any] = {"db": "Tasks"}
     if title_contains is not None:
         selector["title"] = regex_contains(title_contains)

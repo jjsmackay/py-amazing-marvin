@@ -100,6 +100,11 @@ Helpers: `find_tasks`, `tasks_by_day`, `tasks_due_by`, `planner_items`,
 custom Mango selectors. Couch methods raise `MarvinCouchError` before any HTTP
 call when couch is unconfigured — HTTP-only users are unaffected.
 
+`find_tasks(title_contains=...)` is a substring **scan**, not an indexed
+lookup: CouchDB narrows on `db` via the index, then regex-filters the
+remaining Task documents. It's bounded by `limit` (default 25) and fine for
+interactive search, but don't rely on it for large unbounded queries.
+
 **The replica is eventually consistent** (replication lag of seconds). Treat
 it as read-only display state; never seed a write from it — fetch
 authoritative state with `get_doc` instead.

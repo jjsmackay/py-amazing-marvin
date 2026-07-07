@@ -833,8 +833,20 @@ class MarvinClient:
                 method, url, json=json, headers=self._couch_auth_header or None
             ) as resp:
                 if resp.status >= 400:
+                    if resp.status in (401, 403):
+                        detail = (
+                            "CouchDB rejected the credentials "
+                            "(check couch_user/couch_password)"
+                        )
+                    elif resp.status == 404:
+                        detail = (
+                            f"CouchDB database or resource not found "
+                            f"(check couch_db, path {path})"
+                        )
+                    else:
+                        detail = "CouchDB request failed"
                     raise MarvinCouchError(
-                        f"CouchDB request failed (HTTP {resp.status})",
+                        f"{detail} (HTTP {resp.status})",
                         status=resp.status,
                     )
                 return await resp.json(content_type=None)
